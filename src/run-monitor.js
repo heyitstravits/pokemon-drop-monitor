@@ -24,6 +24,18 @@ async function sendTelegram(message) {
   console.log("Telegram message sent");
 }
 
+async function fetchPage(url) {
+  return await axios.get(url, {
+    timeout: 20000,
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile Safari/604.1",
+      Accept: "application/json,text/html,*/*",
+      "Accept-Language": "en-US,en;q=0.9"
+    }
+  });
+}
+
 async function getPreviousStatus(productId) {
   const { data, error } = await supabase
     .from("stock_checks")
@@ -40,19 +52,6 @@ async function getPreviousStatus(productId) {
   return data?.[0] || null;
 }
 
-async function fetchPage(url) {
-  return await axios.get(url, {
-    timeout: 20000,
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile Safari/604.1",
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.9"
-    }
-  });
-}
-
 async function checkTargetProduct(product) {
   try {
     console.log(`Loading Target page: ${product.product_url}`);
@@ -64,28 +63,26 @@ async function checkTargetProduct(product) {
     let status = "out_of_stock";
     let isCartable = false;
 
-    const cartableWords = [
-      "add to cart",
-      "add for shipping",
-      "ship it",
-      "ready within"
-    ];
-
-    const outOfStockWords = [
-      "out of stock",
-      "sold out",
-      "currently unavailable",
-      "not available"
-    ];
-
-    const comingSoonWords = ["coming soon", "preorder", "pre-order"];
-
-    if (cartableWords.some((word) => lowerHtml.includes(word))) {
+    if (
+      lowerHtml.includes("add to cart") ||
+      lowerHtml.includes("add for shipping") ||
+      lowerHtml.includes("ship it") ||
+      lowerHtml.includes("ready within")
+    ) {
       status = "cartable";
       isCartable = true;
-    } else if (comingSoonWords.some((word) => lowerHtml.includes(word))) {
+    } else if (
+      lowerHtml.includes("coming soon") ||
+      lowerHtml.includes("preorder") ||
+      lowerHtml.includes("pre-order")
+    ) {
       status = "coming_soon";
-    } else if (outOfStockWords.some((word) => lowerHtml.includes(word))) {
+    } else if (
+      lowerHtml.includes("out of stock") ||
+      lowerHtml.includes("sold out") ||
+      lowerHtml.includes("currently unavailable") ||
+      lowerHtml.includes("not available")
+    ) {
       status = "out_of_stock";
     }
 
@@ -123,20 +120,19 @@ async function checkProduct(product) {
   };
 }
 
-function extractTargetProductLinks(html) {
+function extractTargetLinksFromText(text) {
   const links = new Set();
 
-  const regex = /https:\/\/www\.target\.com\/p\/[^"'\\\s]+?\/-\/A-[0-9]+/g;
-  const matches = html.match(regex) || [];
+  const fullRegex =
+    /https:\/\/www\.target\.com\/p\/[^"'\\\s]+?\/-\/A-[0-9]+/g;
 
-  for (const match of matches) {
+  const relativeRegex = /\/p\/[^"'\\\s]+?\/-\/A-[0-9]+/g;
+
+  for (const match of text.match(fullRegex) || []) {
     links.add(match.split("?")[0]);
   }
 
-  const relativeRegex = /\/p\/[^"'\\\s]+?\/-\/A-[0-9]+/g;
-  const relativeMatches = html.match(relativeRegex) || [];
-
-  for (const match of relativeMatches) {
+  for (const match of text.match(relativeRegex) || []) {
     links.add(`https://www.target.com${match.split("?")[0]}`);
   }
 
@@ -156,56 +152,40 @@ function cleanProductNameFromUrl(url) {
   }
 }
 
-async function discoverTargetProducts() {
-  console.log("Starting Target discovery...");
+async function insertDiscovery(productName, productUrl) {
+  const { data: existing, error: existingError } = await supabase
+    .from("discovered_products")
+    .select("id")
+    .eq("product_url", productUrl)
+    .limit(1);
 
-  const searchUrls = [
-    "https://www.target.com/s?searchTerm=pokemon+cards",
-    "https://www.target.com/s?searchTerm=pokemon+tcg",
-    "https://www.target.com/s?searchTerm=pokemon+booster"
-  ];
+  if (existingError) {
+    console.error("Discovery lookup error:", existingError.message);
+    return;
+  }
 
-  for (const searchUrl of searchUrls) {
-    try {
-      console.log(`Searching Target: ${searchUrl}`);
+  if (existing && existing.length > 0) {
+    return;
+  }
 
-      const response = await fetchPage(searchUrl);
-      const html = String(response.data || "");
-      const links = extractTargetProductLinks(html);
+  const { error } = await supabase.from("discovered_products").insert({
+    retailer: "Target",
+    product_name: productName,
+    product_url: productUrl,
+    status: "discovered",
+    added_to_watchlist: false,
+    ignored: false
+  });
 
-      console.log(`Found ${links.length} Target product links`);
+  if (error) {
+    console.error("Discovery insert error:", error.message);
+    return;
+  }
 
-      for (const productUrl of links) {
-        const productName = cleanProductNameFromUrl(productUrl);
+  console.log(`New Target discovery: ${productName}`);
 
-        const { data: existing } = await supabase
-          .from("discovered_products")
-          .select("id")
-          .eq("product_url", productUrl)
-          .limit(1);
-
-        if (existing && existing.length > 0) {
-          continue;
-        }
-
-        const { error } = await supabase.from("discovered_products").insert({
-          retailer: "Target",
-          product_name: productName,
-          product_url: productUrl,
-          status: "discovered",
-          added_to_watchlist: false,
-          ignored: false
-        });
-
-        if (error) {
-          console.error("Discovery insert error:", error.message);
-          continue;
-        }
-
-        console.log(`New Target discovery: ${productName}`);
-
-        await sendTelegram(
-          `✨ NEW TARGET PRODUCT FOUND
+  await sendTelegram(
+    `✨ NEW TARGET PRODUCT FOUND
 
 ${productName}
 
@@ -215,9 +195,41 @@ Open:
 ${productUrl}
 
 Go to your Discovery page to add it to Watchlist.`
-        );
+  );
+}
 
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+async function discoverTargetProducts() {
+  console.log("Starting Target discovery...");
+
+  const urlsToTry = [
+    "https://www.target.com/s?searchTerm=pokemon%20cards",
+    "https://www.target.com/s?searchTerm=pokemon%20tcg",
+    "https://www.target.com/s?searchTerm=pokemon%20booster",
+    "https://redsky.target.com/redsky_aggregations/v1/web/plp_search_v2?key=9f36aeafbe60771e321a7cc95a78140772ab3e96&channel=WEB&count=24&default_purchasability_filter=true&include_sponsored=true&keyword=pokemon%20cards&offset=0&page=%2Fs%2Fpokemon%20cards&platform=desktop&pricing_store_id=1771&scheduled_delivery_store_id=1771&store_ids=1771%2C1768%2C1113%2C3374%2C1792&useragent=Mozilla%2F5.0&visitor_id=01787772E6FD0201B7D280AD0B9C2D6B"
+  ];
+
+  for (const url of urlsToTry) {
+    try {
+      console.log(`Discovering from: ${url}`);
+
+      const response = await fetchPage(url);
+      const text =
+        typeof response.data === "string"
+          ? response.data
+          : JSON.stringify(response.data);
+
+      console.log(`Discovery HTTP ${response.status}, response length ${text.length}`);
+
+      const links = extractTargetLinksFromText(text);
+
+      console.log(`Found ${links.length} Target product links`);
+
+      for (const productUrl of links) {
+        const productName = cleanProductNameFromUrl(productUrl);
+
+        await insertDiscovery(productName, productUrl);
+
+        await new Promise((resolve) => setTimeout(resolve, 750));
       }
     } catch (err) {
       console.error(`Target discovery failed: ${err.message}`);
