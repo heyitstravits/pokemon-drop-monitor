@@ -15,22 +15,29 @@ async function sendTelegram(message) {
     return;
   }
 
-  try {
-    await axios.post(
-      `https://api.telegram.org/bot${token}/sendMessage`,
-      {
-        chat_id: chatId,
-        text: message
-      }
-    );
+  await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
+    chat_id: chatId,
+    text: message,
+    disable_web_page_preview: false
+  });
 
-    console.log("Telegram message sent");
-  } catch (error) {
-    console.error(
-      "Telegram error:",
-      error?.response?.data || error.message
-    );
+  console.log("Telegram message sent");
+}
+
+async function getPreviousStatus(productId) {
+  const { data, error } = await supabase
+    .from("stock_checks")
+    .select("status, is_cartable, checked_at")
+    .eq("product_id", productId)
+    .order("checked_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error("Previous status error:", error);
+    return null;
   }
+
+  return data?.[0] || null;
 }
 
 async function run() {
@@ -52,32 +59,50 @@ async function run() {
     try {
       console.log(`Checking ${product.name}`);
 
-      await supabase.from("stock_checks").insert({
+      const previous = await getPreviousStatus(product.id);
+
+      // TEST STATUS FOR NOW
+      // Later we will replace this with real website checking.
+      const currentStatus = "cartable";
+      const currentPrice = product.target_price;
+      const currentIsCartable = true;
+
+      const { error: insertError } = await supabase.from("stock_checks").insert({
         product_id: product.id,
-        status: "cartable",
-        price: product.target_price,
-        is_cartable: true,
-        raw_message: "GitHub monitor test"
+        status: currentStatus,
+        price: currentPrice,
+        is_cartable: currentIsCartable,
+        raw_message: "GitHub monitor test with status-change alert"
       });
 
-      await sendTelegram(
-        `🚨 Pokémon Alert
+      if (insertError) {
+        throw insertError;
+      }
+
+      const wasCartable = previous?.is_cartable === true;
+      const becameCartable = !wasCartable && currentIsCartable === true;
+
+      if (becameCartable) {
+        await sendTelegram(
+          `🚨 CARTABLE NOW
 
 ${product.name}
 
 Retailer: ${product.retailer}
-Status: cartable
-Price: $${product.target_price}
+Price: $${currentPrice}
 
+Open:
 ${product.product_url}`
-      );
+        );
+      } else {
+        console.log(
+          `No alert sent. Previous cartable: ${wasCartable}, current cartable: ${currentIsCartable}`
+        );
+      }
 
       console.log(`Finished ${product.name}`);
     } catch (err) {
-      console.error(
-        `Error checking ${product.name}:`,
-        err.message
-      );
+      console.error(`Error checking ${product.name}:`, err.message);
 
       await supabase.from("stock_checks").insert({
         product_id: product.id,
