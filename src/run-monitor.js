@@ -16,7 +16,9 @@ const INCLUDE_TERMS = [
 const EXCLUDE_TERMS = [
   "shirt", "hoodie", "figure", "birthday", "plush", "toy", "costume",
   "backpack", "lunch", "pajama", "pillow", "blanket", "hat", "sock",
-  "poster", "book", "mug", "pants"
+  "poster", "book", "mug", "pants", "chinese", "world championships",
+  "world championship", "trick or trade", "lot 8", "lot", "25th anniversary", "sword shield",
+  "sun moon", "xy evolutions"
 ];
 
 async function sendTelegram(message) {
