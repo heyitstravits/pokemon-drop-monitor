@@ -403,8 +403,6 @@ ${product.product_url}`
 async function run() {
   console.log("Starting monitor...");
 
-  await discoverTargetProducts();
-  await discoverPokemonCenterProducts();
   await monitorWatchlist();
 
   console.log("Monitor completed");
