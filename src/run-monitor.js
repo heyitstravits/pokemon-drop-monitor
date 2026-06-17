@@ -23,16 +23,26 @@ const EXCLUDE_TERMS = [
 
 async function sendTelegram(message) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) return;
 
-  await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
-    chat_id: chatId,
-    text: message,
-    disable_web_page_preview: false
-  });
+  const chatIds = [
+    process.env.TELEGRAM_CHAT_ID,
+    process.env.TELEGRAM_CHAT_ID_2
+  ].filter(Boolean);
 
-  console.log("Telegram message sent");
+  if (!token || chatIds.length === 0) return;
+
+  for (const chatId of chatIds) {
+    await axios.post(
+      `https://api.telegram.org/bot${token}/sendMessage`,
+      {
+        chat_id: chatId,
+        text: message,
+        disable_web_page_preview: false
+      }
+    );
+  }
+
+  console.log(`Telegram message sent to ${chatIds.length} chat(s)`);
 }
 
 async function fetchPage(url) {
