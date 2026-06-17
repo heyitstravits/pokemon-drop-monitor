@@ -28,9 +28,6 @@ async function sendTelegram(message) {
     process.env.TELEGRAM_CHAT_ID,
     process.env.TELEGRAM_CHAT_ID_2
   ].filter(Boolean);
-  console.log("CHAT 1:", process.env.TELEGRAM_CHAT_ID ? "FOUND" : "MISSING");
-console.log("CHAT 2:", process.env.TELEGRAM_CHAT_ID_2 ? "FOUND" : "MISSING");
-console.log("CHAT COUNT:", chatIds.length);
 
   if (!token || chatIds.length === 0) return;
 
@@ -601,7 +598,6 @@ async function runDiscovery() {
 
 async function run() {
   console.log("Starting monitor...");
-  await sendTelegram("Test alert from Pokemon monitor");
 
   await monitorWatchlist();
   await runDiscovery();
