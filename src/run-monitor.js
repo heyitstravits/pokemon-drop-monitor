@@ -265,7 +265,6 @@ async function discoverTargetProducts() {
   console.error(`Target failed status: ${err.response?.status || "no-status"}`);
   console.error(`Target failed URL: ${url}`);
 }
-    }
   }
 }
 
