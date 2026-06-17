@@ -255,35 +255,42 @@ async function discoverTargetProducts() {
       console.log(`Fetching Target URL: ${url}`);
       const res = await fetchPage(url);
       console.log(`Target fetch success: HTTP ${res.status}`);
-      const text = typeof res.data === "string" ? res.data : JSON.stringify(res.data);
-      const links = extractTargetLinks(text);
-      if (typeof res.data === "object") {
-  const products =
-    res.data?.data?.search?.products ||
-    res.data?.data?.search_response?.products ||
-    res.data?.data?.product_summaries ||
-    [];
+      const products =
+  res.data?.data?.search?.products ||
+  res.data?.data?.search_response?.products ||
+  res.data?.data?.product_summaries ||
+  [];
 
-  console.log("TARGET PRODUCT SAMPLE:");
-  console.log(JSON.stringify(products[0], null, 2).slice(0, 5000));
+console.log(`Found ${products.length} Target product objects`);
+
+for (const product of products) {
+  const isMarketplace = product?.item?.fulfillment?.is_marketplace === true;
+  const vendorName = product?.item?.product_vendors?.[0]?.vendor_name || "Target";
+
+  if (isMarketplace) {
+    console.log(`Skipped Target marketplace seller: ${vendorName}`);
+    continue;
+  }
+
+  const productUrl = product?.item?.enrichment?.buy_url;
+  const productName = product?.item?.product_description?.title || cleanNameFromUrl(productUrl);
+  const price = product?.price?.current_retail ?? null;
+
+  if (!productUrl || !productName) {
+    console.log("Skipped Target product with missing URL/name");
+    continue;
+  }
+
+  await insertDiscovery({
+    retailer: "Target",
+    productName,
+    productUrl,
+    price,
+    seller: vendorName
+  });
+
+  await new Promise((r) => setTimeout(r, 500));
 }
-
-      console.log(`Found ${links.length} Target links`);
-
-      for (const productUrl of links) {
-        const productName = cleanNameFromUrl(productUrl);
-        const price = findPriceNearUrl(text, productUrl);
-
-        await insertDiscovery({
-          retailer: "Target",
-          productName,
-          productUrl,
-          price,
-          seller: "Target"
-        });
-
-        await new Promise((r) => setTimeout(r, 500));
-      }
     } catch (err) {
   console.error(`Target discovery failed: ${err.message}`);
   console.error(`Target failed status: ${err.response?.status || "no-status"}`);
