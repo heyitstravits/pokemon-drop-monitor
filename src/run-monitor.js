@@ -461,9 +461,13 @@ async function runDiscovery() {
   }
 
   for (const retailer of retailers || []) {
-    const discoveryOn =
-      retailer.enabled === true &&
-      retailer.discovery_enabled === true;
+    const retailerEnabled =
+  retailer.enabled === true ||
+  retailer.active === true;
+
+const discoveryOn =
+  retailerEnabled === true &&
+  retailer.discovery_enabled === true;
 
     if (!discoveryOn) {
       console.log(`Discovery disabled for ${retailer.name}`);
