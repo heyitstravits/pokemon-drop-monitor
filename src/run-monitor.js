@@ -601,6 +601,7 @@ async function runDiscovery() {
 
 async function run() {
   console.log("Starting monitor...");
+  await sendTelegram("Test alert from Pokemon monitor");
 
   await monitorWatchlist();
   await runDiscovery();
