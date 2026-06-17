@@ -152,26 +152,40 @@ async function insertDiscovery({ retailer, productName, productUrl, price = null
 
   const { data: existing } = await supabase
     .from("discovered_products")
-    .select("id")
+    .select("id, times_seen")
     .eq("product_url", productUrl)
     .limit(1);
 
-  if (existing?.length) return;
+  if (existing?.length) {
+  await supabase
+    .from("discovered_products")
+    .update({
+      last_seen_at: new Date().toISOString(),
+      times_seen: (existing[0].times_seen || 1) + 1
+    })
+    .eq("id", existing[0].id);
+
+  return;
+}
 
   const { error } = await supabase.from("discovered_products").insert({
-    retailer,
-    product_name: productName,
-    product_url: productUrl,
-    status: "discovered",
-    added_to_watchlist: false,
-    ignored: false,
-    seller: seller || retailer,
-    price,
-    is_marketplace: false,
-    msrp_estimate: msrp,
-    price_vs_msrp: priceVsMsrp,
-    priority
-  });
+  retailer,
+  product_name: productName,
+  product_url: productUrl,
+  status: "discovered",
+  added_to_watchlist: false,
+  ignored: false,
+  seller: seller || retailer,
+  price,
+  is_marketplace: false,
+  msrp_estimate: msrp,
+  price_vs_msrp: priceVsMsrp,
+  priority,
+
+  first_seen_at: new Date().toISOString(),
+  last_seen_at: new Date().toISOString(),
+  times_seen: 1
+});
 
   if (error) {
     console.error("Discovery insert error:", error.message);
