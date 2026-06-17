@@ -302,9 +302,9 @@ async function discoverBestBuyProducts() {
   console.log("Starting Best Buy discovery...");
 
   const urls = [
-    "https://www.bestbuy.com/site/searchpage.jsp?st=pokemon+cards",
-    "https://www.bestbuy.com/site/searchpage.jsp?st=pokemon+tcg",
-    "https://www.bestbuy.com/site/searchpage.jsp?st=pokemon+booster"
+    "https://www.bestbuy.com/site/searchpage.jsp?st=pokemon%20cards",
+    "https://www.bestbuy.com/site/searchpage.jsp?st=pokemon%20tcg",
+    "https://www.bestbuy.com/site/searchpage.jsp?st=pokemon%20booster"
   ];
 
   for (const url of urls) {
@@ -314,11 +314,33 @@ async function discoverBestBuyProducts() {
       const res = await fetchPage(url);
       const html = String(res.data || "");
 
+      console.log(`Best Buy response length: ${html.length}`);
+
       const links = new Set();
 
-      const relativeRegex = /\/site\/[^"'<>]+?\/[0-9]+\.p/g;
-      for (const match of html.match(relativeRegex) || []) {
-        links.add(`https://www.bestbuy.com${match.split("?")[0]}`);
+      const patterns = [
+        /https:\/\/www\.bestbuy\.com\/site\/[^"'<>\\\s]+?\/[0-9]+\.p/g,
+        /\/site\/[^"'<>\\\s]+?\/[0-9]+\.p/g,
+        /"url"\s*:\s*"([^"]*bestbuy\.com\/site\/[^"]*?\/[0-9]+\.p[^"]*)"/g,
+        /"href"\s*:\s*"([^"]*\/site\/[^"]*?\/[0-9]+\.p[^"]*)"/g
+      ];
+
+      for (const pattern of patterns) {
+        const matches = [...html.matchAll(pattern)];
+
+        for (const match of matches) {
+          const raw = match[1] || match[0];
+          const cleaned = raw
+            .replace(/\\u002F/g, "/")
+            .replace(/\\/g, "")
+            .split("?")[0];
+
+          if (cleaned.startsWith("https://www.bestbuy.com")) {
+            links.add(cleaned);
+          } else if (cleaned.startsWith("/site/")) {
+            links.add(`https://www.bestbuy.com${cleaned}`);
+          }
+        }
       }
 
       console.log(`Found ${links.size} Best Buy links`);
