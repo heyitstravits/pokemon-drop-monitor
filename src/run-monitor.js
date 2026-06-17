@@ -400,10 +400,87 @@ ${product.product_url}`
   }
 }
 
+async function runDiscoveryForRetailer(retailer) {
+  const startedAt = new Date().toISOString();
+
+  let productsFound = 0;
+  let productsAdded = 0;
+  let errors = null;
+  let status = "success";
+
+  try {
+    const before = await supabase
+      .from("discovered_products")
+      .select("id", { count: "exact", head: true });
+
+    const beforeCount = before.count || 0;
+
+    if (retailer.name === "Target") {
+      await discoverTargetProducts();
+    } else if (retailer.name === "Pokemon Center") {
+      await discoverPokemonCenterProducts();
+    } else {
+      console.log(`No discovery function yet for ${retailer.name}`);
+      status = "skipped";
+    }
+
+    const after = await supabase
+      .from("discovered_products")
+      .select("id", { count: "exact", head: true });
+
+    const afterCount = after.count || 0;
+    productsAdded = Math.max(0, afterCount - beforeCount);
+    productsFound = productsAdded;
+  } catch (err) {
+    errors = err.message;
+    status = "failed";
+    console.error(`Discovery failed for ${retailer.name}:`, err.message);
+  }
+
+  await supabase.from("discovery_logs").insert({
+    retailer: retailer.name,
+    started_at: startedAt,
+    completed_at: new Date().toISOString(),
+    products_found: productsFound,
+    products_added: productsAdded,
+    errors,
+    status
+  });
+}
+
+async function runDiscovery() {
+  console.log("Checking retailer discovery settings...");
+
+  const { data: retailers, error } = await supabase
+    .from("retailers")
+    .select("*")
+
+  if (error) {
+    console.error("Failed to load retailers:", error.message);
+    return;
+  }
+
+  for (const retailer of retailers || []) {
+    const discoveryOn =
+      retailer.enabled === true &&
+      retailer.discovery_enabled === true;
+
+    if (!discoveryOn) {
+      console.log(`Discovery disabled for ${retailer.name}`);
+      continue;
+    }
+
+    console.log(`Discovery enabled for ${retailer.name}`);
+    await runDiscoveryForRetailer(retailer);
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+}
+
 async function run() {
   console.log("Starting monitor...");
 
   await monitorWatchlist();
+  await runDiscovery();
 
   console.log("Monitor completed");
 }
