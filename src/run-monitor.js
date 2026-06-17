@@ -257,6 +257,16 @@ async function discoverTargetProducts() {
       console.log(`Target fetch success: HTTP ${res.status}`);
       const text = typeof res.data === "string" ? res.data : JSON.stringify(res.data);
       const links = extractTargetLinks(text);
+      if (typeof res.data === "object") {
+  const products =
+    res.data?.data?.search?.products ||
+    res.data?.data?.search_response?.products ||
+    res.data?.data?.product_summaries ||
+    [];
+
+  console.log("TARGET PRODUCT SAMPLE:");
+  console.log(JSON.stringify(products[0], null, 2).slice(0, 5000));
+}
 
       console.log(`Found ${links.length} Target links`);
 
