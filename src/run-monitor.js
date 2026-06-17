@@ -331,18 +331,11 @@ async function discoverBestBuyProducts() {
       const html = String(res.data || "");
 
       console.log(`Best Buy response length: ${html.length}`);
-      const pokemonIndex = html.toLowerCase().indexOf("pokemon");
-const skuIndex = html.toLowerCase().indexOf("sku");
-const productIndex = html.toLowerCase().indexOf("products");
 
-console.log(`Best Buy pokemon index: ${pokemonIndex}`);
-console.log(`Best Buy sku index: ${skuIndex}`);
-console.log(`Best Buy products index: ${productIndex}`);
+const siteMatches = html.match(/\/site\/[^"]+/g);
 
-if (pokemonIndex !== -1) {
-  console.log(html.substring(Math.max(0, pokemonIndex - 1500), pokemonIndex + 5000));
-}
-
+console.log("Best Buy site matches:");
+console.log(siteMatches ? siteMatches.slice(0, 25) : "NONE FOUND");
       const links = new Set();
 
       const rawPatterns = [
