@@ -104,11 +104,27 @@ function estimateMsrp(name) {
 
 function cleanNameFromUrl(url) {
   try {
-    const match = url.match(/\/p\/(.+?)\/-\/A-/) || url.match(/\/product\/(.+?)(\?|$|\/)/);
-    if (!match) return "Pokemon TCG Product";
-    return decodeURIComponent(match[1])
-      .replace(/-/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+    const decoded = decodeURIComponent(url);
+
+    const targetMatch =
+      decoded.match(/\/p\/(.+?)\/-\/A-/) ||
+      decoded.match(/\/product\/(.+?)(\?|$|\/)/);
+
+    if (targetMatch) {
+      return targetMatch[1]
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
+    const bestBuyMatch = decoded.match(/\/site\/(.+?)\/[0-9]+\.p/);
+
+    if (bestBuyMatch) {
+      return bestBuyMatch[1]
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
+    return "Pokemon TCG Product";
   } catch {
     return "Pokemon TCG Product";
   }
@@ -315,37 +331,51 @@ async function discoverBestBuyProducts() {
       const html = String(res.data || "");
 
       console.log(`Best Buy response length: ${html.length}`);
+      console.log(html.substring(0, 5000));
 
       const links = new Set();
 
-      const patterns = [
+      const rawPatterns = [
         /https:\/\/www\.bestbuy\.com\/site\/[^"'<>\\\s]+?\/[0-9]+\.p/g,
         /\/site\/[^"'<>\\\s]+?\/[0-9]+\.p/g,
-        /"url"\s*:\s*"([^"]*bestbuy\.com\/site\/[^"]*?\/[0-9]+\.p[^"]*)"/g,
-        /"href"\s*:\s*"([^"]*\/site\/[^"]*?\/[0-9]+\.p[^"]*)"/g
+        /\\u002Fsite\\u002F[^"'<>\\\s]+?\\u002F[0-9]+\.p/g,
+        /\\\/site\\\/[^"'<>\\\s]+?\\\/[0-9]+\.p/g,
+        /"href"\s*:\s*"([^"]*site[^"]*?[0-9]+\.p[^"]*)"/g,
+        /"url"\s*:\s*"([^"]*site[^"]*?[0-9]+\.p[^"]*)"/g
       ];
 
-      for (const pattern of patterns) {
+      for (const pattern of rawPatterns) {
         const matches = [...html.matchAll(pattern)];
 
         for (const match of matches) {
-          const raw = match[1] || match[0];
-          const cleaned = raw
+          let raw = match[1] || match[0];
+
+          raw = raw
             .replace(/\\u002F/g, "/")
+            .replace(/\\\//g, "/")
             .replace(/\\/g, "")
             .split("?")[0];
 
-          if (cleaned.startsWith("https://www.bestbuy.com")) {
-            links.add(cleaned);
-          } else if (cleaned.startsWith("/site/")) {
-            links.add(`https://www.bestbuy.com${cleaned}`);
+          if (raw.startsWith("https://www.bestbuy.com/site/")) {
+            links.add(raw);
+          } else if (raw.startsWith("/site/")) {
+            links.add(`https://www.bestbuy.com${raw}`);
           }
         }
       }
 
-      console.log(`Found ${links.size} Best Buy links`);
+      const filteredLinks = [...links].filter((productUrl) => {
+        const lower = productUrl.toLowerCase();
+        return (
+          lower.includes("pokemon") &&
+          lower.includes("bestbuy.com/site") &&
+          lower.endsWith(".p")
+        );
+      });
 
-      for (const productUrl of links) {
+      console.log(`Found ${filteredLinks.length} Best Buy Pokemon links`);
+
+      for (const productUrl of filteredLinks) {
         const productName = cleanNameFromUrl(productUrl);
 
         await insertDiscovery({
