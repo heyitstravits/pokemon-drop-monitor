@@ -331,7 +331,17 @@ async function discoverBestBuyProducts() {
       const html = String(res.data || "");
 
       console.log(`Best Buy response length: ${html.length}`);
-      console.log(html.substring(0, 5000));
+      const pokemonIndex = html.toLowerCase().indexOf("pokemon");
+const skuIndex = html.toLowerCase().indexOf("sku");
+const productIndex = html.toLowerCase().indexOf("products");
+
+console.log(`Best Buy pokemon index: ${pokemonIndex}`);
+console.log(`Best Buy sku index: ${skuIndex}`);
+console.log(`Best Buy products index: ${productIndex}`);
+
+if (pokemonIndex !== -1) {
+  console.log(html.substring(Math.max(0, pokemonIndex - 1500), pokemonIndex + 5000));
+}
 
       const links = new Set();
 
