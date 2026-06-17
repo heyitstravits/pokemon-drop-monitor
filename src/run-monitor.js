@@ -331,11 +331,11 @@ async function discoverBestBuyProducts() {
       const html = String(res.data || "");
 
       console.log(`Best Buy response length: ${html.length}`);
+      const apiMatches = html.match(/api[^"'<> ]+/gi);
 
-const siteMatches = html.match(/\/site\/[^"]+/g);
+console.log("Best Buy API matches:");
+console.log(apiMatches ? apiMatches.slice(0, 50) : "NONE");
 
-console.log("Best Buy site matches:");
-console.log(siteMatches ? siteMatches.slice(0, 25) : "NONE FOUND");
       const links = new Set();
 
       const rawPatterns = [
