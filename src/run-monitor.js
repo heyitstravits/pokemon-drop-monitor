@@ -298,6 +298,51 @@ async function discoverPokemonCenterProducts() {
 
   console.log("Pokemon Center discovery completed");
 }
+async function discoverBestBuyProducts() {
+  console.log("Starting Best Buy discovery...");
+
+  const urls = [
+    "https://www.bestbuy.com/site/searchpage.jsp?st=pokemon+cards",
+    "https://www.bestbuy.com/site/searchpage.jsp?st=pokemon+tcg",
+    "https://www.bestbuy.com/site/searchpage.jsp?st=pokemon+booster"
+  ];
+
+  for (const url of urls) {
+    try {
+      console.log(`Checking Best Buy: ${url}`);
+
+      const res = await fetchPage(url);
+      const html = String(res.data || "");
+
+      const links = new Set();
+
+      const relativeRegex = /\/site\/[^"'<>]+?\/[0-9]+\.p/g;
+      for (const match of html.match(relativeRegex) || []) {
+        links.add(`https://www.bestbuy.com${match.split("?")[0]}`);
+      }
+
+      console.log(`Found ${links.size} Best Buy links`);
+
+      for (const productUrl of links) {
+        const productName = cleanNameFromUrl(productUrl);
+
+        await insertDiscovery({
+          retailer: "Best Buy",
+          productName,
+          productUrl,
+          price: null,
+          seller: "Best Buy"
+        });
+
+        await new Promise((r) => setTimeout(r, 750));
+      }
+    } catch (err) {
+      console.error(`Best Buy discovery failed: ${err.message}`);
+    }
+  }
+
+  console.log("Best Buy discovery completed");
+}
 
 async function getPreviousStatus(productId) {
   const { data } = await supabase
@@ -416,13 +461,15 @@ async function runDiscoveryForRetailer(retailer) {
     const beforeCount = before.count || 0;
 
     if (retailer.name === "Target") {
-      await discoverTargetProducts();
-    } else if (retailer.name === "Pokemon Center") {
-      await discoverPokemonCenterProducts();
-    } else {
-      console.log(`No discovery function yet for ${retailer.name}`);
-      status = "skipped";
-    }
+  await discoverTargetProducts();
+} else if (retailer.name === "Pokemon Center") {
+  await discoverPokemonCenterProducts();
+} else if (retailer.name === "Best Buy") {
+  await discoverBestBuyProducts();
+} else {
+  console.log(`No discovery function yet for ${retailer.name}`);
+  status = "skipped";
+}
 
     const after = await supabase
       .from("discovered_products")
