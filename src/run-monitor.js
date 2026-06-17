@@ -238,7 +238,9 @@ async function discoverTargetProducts() {
 
   for (const url of urls) {
     try {
+      console.log(`Fetching Target URL: ${url}`);
       const res = await fetchPage(url);
+      console.log(`Target fetch success: HTTP ${res.status}`);
       const text = typeof res.data === "string" ? res.data : JSON.stringify(res.data);
       const links = extractTargetLinks(text);
 
@@ -259,7 +261,10 @@ async function discoverTargetProducts() {
         await new Promise((r) => setTimeout(r, 500));
       }
     } catch (err) {
-      console.error(`Target discovery failed: ${err.message}`);
+  console.error(`Target discovery failed: ${err.message}`);
+  console.error(`Target failed status: ${err.response?.status || "no-status"}`);
+  console.error(`Target failed URL: ${url}`);
+}
     }
   }
 }
