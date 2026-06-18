@@ -134,6 +134,16 @@ function cleanNameFromUrl(url) {
         .replace(/\b\w/g, (c) => c.toUpperCase());
     }
 
+    const walmartMatch = decoded.match(/\/ip\/(.+?)\/[0-9]+/);
+
+if (walmartMatch) {
+  return walmartMatch[1]
+    .replace(/-/g, " ")
+    .replace(/&#34;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+    
     return "Pokemon TCG Product";
   } catch {
     return "Pokemon TCG Product";
@@ -194,7 +204,7 @@ async function insertDiscovery({ retailer, productName, productUrl, price = null
 
   console.log(`New ${retailer} discovery: ${productName} | Priority: ${priority}`);
 
-  if (priority >= 90) {
+  if (priority >= 90 || retailer === "Walmart") {
     await sendTelegram(
       `✨ HIGH PRIORITY ${retailer.toUpperCase()} TCG PRODUCT
 
