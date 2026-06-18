@@ -381,16 +381,41 @@ async function discoverPokemonCenterProducts() {
 
 function extractWalmartLinks(text) {
   const links = new Set();
+  const html = String(text || "");
 
-  const fullRegex = /https:\/\/www\.walmart\.com\/ip\/[^"'\\\s]+\/[0-9]+/g;
-  const relativeRegex = /\/ip\/[^"'\\\s]+\/[0-9]+/g;
+  const patterns = [
+    /https:\/\/www\.walmart\.com\/ip\/[^"'<>\\\s]+/g,
+    /\/ip\/[^"'<>\\\s]+/g,
+    /"canonicalUrl"\s*:\s*"([^"]*\/ip\/[^"]+)"/g,
+    /"productUrl"\s*:\s*"([^"]*\/ip\/[^"]+)"/g,
+    /"usItemId"\s*:\s*"([0-9]+)"/g
+  ];
 
-  for (const m of String(text).match(fullRegex) || []) links.add(m.split("?")[0]);
-  for (const m of String(text).match(relativeRegex) || []) links.add(`https://www.walmart.com${m.split("?")[0]}`);
+  for (const pattern of patterns) {
+    const matches = [...html.matchAll(pattern)];
+
+    for (const match of matches) {
+      let raw = match[1] || match[0];
+
+      raw = raw
+        .replace(/\\u002F/g, "/")
+        .replace(/\\\//g, "/")
+        .replace(/\\/g, "")
+        .split("?")[0];
+
+      if (/^[0-9]+$/.test(raw)) {
+        links.add(`https://www.walmart.com/ip/${raw}`);
+      } else if (raw.startsWith("https://www.walmart.com/ip/")) {
+        links.add(raw);
+      } else if (raw.startsWith("/ip/")) {
+        links.add(`https://www.walmart.com${raw}`);
+      }
+    }
+  }
 
   return [...links].filter((url) => {
     const lower = url.toLowerCase();
-    return lower.includes("pokemon");
+    return lower.includes("pokemon") || /\/ip\/[0-9]+$/.test(lower);
   });
 }
 
@@ -410,6 +435,15 @@ async function discoverWalmartProducts() {
 
       const res = await fetchPage(url);
       const html = String(res.data || "");
+      console.log("WALMART HTML LENGTH:", html.length);
+
+const sellerMatches = html.match(/"sellerName":"[^"]+"|"sellerDisplayName":"[^"]+"|"seller":"[^"]+"|"sellerId":"[^"]+"/g);
+console.log("WALMART SELLER MATCHES:");
+console.log(sellerMatches ? sellerMatches.slice(0, 30) : "NONE");
+
+const itemMatches = html.match(/"usItemId":"[0-9]+"/g);
+console.log("WALMART ITEM MATCHES:");
+console.log(itemMatches ? itemMatches.slice(0, 20) : "NONE");
       const links = extractWalmartLinks(html);
 
       console.log(`Found ${links.length} Walmart links`);
