@@ -409,6 +409,13 @@ async function discoverWalmartProducts() {
       });
 
       await page.waitForTimeout(5000);
+      const pageTitle = await page.title();
+const pageUrl = page.url();
+const bodySample = await page.locator("body").innerText().catch(() => "");
+
+console.log("WALMART PAGE TITLE:", pageTitle);
+console.log("WALMART PAGE URL:", pageUrl);
+console.log("WALMART BODY SAMPLE:", bodySample.slice(0, 500));
 
       const links = await page.$$eval("a[href*='/ip/']", anchors =>
         anchors
