@@ -160,7 +160,38 @@ if (walmartMatch) {
   }
 }
 
-async function insertDiscovery({ retailer, productName, productUrl, price = null, seller = null }) {
+async function getUpcomingProducts() {
+  const { data, error } = await supabase
+    .from("upcoming_products")
+    .select("*")
+    .eq("active", true);
+
+  if (error) {
+    console.error("Failed to load upcoming_products:", error.message);
+    return [];
+  }
+
+  return data || [];
+}
+
+function matchUpcomingProduct(productName, upcomingProducts) {
+  const name = String(productName || "").toLowerCase();
+
+  for (const upcoming of upcomingProducts || []) {
+    const keywords = upcoming.keywords || [];
+
+    const matched = keywords.some(keyword =>
+      name.includes(String(keyword).toLowerCase())
+    );
+
+    if (matched) {
+      return upcoming;
+    }
+  }
+
+  return null;
+}
+async function insertDiscovery({ retailer, productName, productUrl, price = null, seller = null, upcomingProducts = [] }) {
   if (!shouldKeepProduct(productName, productUrl)) {
     console.log(`Skipped noisy product: ${productName}`);
     return;
@@ -169,6 +200,15 @@ async function insertDiscovery({ retailer, productName, productUrl, price = null
   const priority = getPriority(productName, productUrl);
   const msrp = estimateMsrp(productName);
   const priceVsMsrp = price && msrp ? Number((price / msrp).toFixed(2)) : null;
+  const matchedUpcoming = matchUpcomingProduct(productName, upcomingProducts);
+  const finalPriority = matchedUpcoming?.priority || priority;
+  const finalMsrp = matchedUpcoming?.expected_msrp || msrp;
+  const finalPriceVsMsrp = price && finalMsrp ? Number((price / finalMsrp).toFixed(2)) : priceVsMsrp;
+
+if (!matchedUpcoming && retailer === "Target") {
+  console.log(`Skipped Target product not in upcoming list: ${productName}`);
+  return;
+}
 
   const { data: existing } = await supabase
     .from("discovered_products")
@@ -198,10 +238,10 @@ async function insertDiscovery({ retailer, productName, productUrl, price = null
   seller: seller || retailer,
   price,
   is_marketplace: false,
-  msrp_estimate: msrp,
-  price_vs_msrp: priceVsMsrp,
-  priority,
-
+  msrp_estimate: finalMsrp,
+  price_vs_msrp: finalPriceVsMsrp,
+  priority: finalPriority,
+  matched_upcoming_product_id: matchedUpcoming?.id || null,
   first_seen_at: new Date().toISOString(),
   last_seen_at: new Date().toISOString(),
   times_seen: 1
@@ -214,7 +254,7 @@ async function insertDiscovery({ retailer, productName, productUrl, price = null
 
   console.log(`New ${retailer} discovery: ${productName} | Priority: ${priority}`);
 
-  if (priority >= 90 || retailer === "Walmart") {
+  if (finalPriority >= 90) {
     await sendTelegram(
       `✨ HIGH PRIORITY ${retailer.toUpperCase()} TCG PRODUCT
 
@@ -264,6 +304,8 @@ function findPriceNearUrl(text, url) {
 
 async function discoverTargetProducts() {
   console.log("Starting Target discovery...");
+  const upcomingProducts = await getUpcomingProducts();
+console.log(`Loaded ${upcomingProducts.length} upcoming products`);
 
   const urls = [
     "https://redsky.target.com/redsky_aggregations/v1/web/plp_search_v2?key=9f36aeafbe60771e321a7cc95a78140772ab3e96&channel=WEB&count=24&default_purchasability_filter=true&include_sponsored=true&keyword=pokemon%20cards&offset=0&page=%2Fs%2Fpokemon%20cards&platform=desktop&pricing_store_id=1771&scheduled_delivery_store_id=1771&store_ids=1771%2C1768%2C1113%2C3374%2C1792&useragent=Mozilla%2F5.0&visitor_id=01787772E6FD0201B7D280AD0B9C2D6B",
@@ -302,12 +344,13 @@ for (const product of products) {
   }
 
   await insertDiscovery({
-    retailer: "Target",
-    productName,
-    productUrl,
-    price,
-    seller: vendorName
-  });
+  retailer: "Target",
+  productName,
+  productUrl,
+  price,
+  seller: vendorName,
+  upcomingProducts
+});
 
   await new Promise((r) => setTimeout(r, 500));
 }
