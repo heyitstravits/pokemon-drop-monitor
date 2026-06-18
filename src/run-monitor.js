@@ -46,17 +46,26 @@ async function sendTelegram(message) {
 }
 
 async function fetchPage(url) {
+  const isWalmart = url.includes("walmart.com");
+
   return axios.get(url, {
     timeout: 20000,
     headers: {
-      "User-Agent":
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile Safari/604.1",
-      Accept: "application/json,text/html,*/*",
-      "Accept-Language": "en-US,en;q=0.9"
+      "User-Agent": isWalmart
+        ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+        : "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile Safari/604.1",
+
+      Accept: isWalmart
+        ? "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+        : "application/json,text/html,*/*",
+
+      "Accept-Language": "en-US,en;q=0.9",
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+      "Upgrade-Insecure-Requests": "1"
     }
   });
 }
-
 function hasAny(text, terms) {
   const lower = String(text || "").toLowerCase();
   return terms.some((term) => lower.includes(term));
