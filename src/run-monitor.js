@@ -359,6 +359,63 @@ async function discoverPokemonCenterProducts() {
 
   console.log("Pokemon Center discovery completed");
 }
+
+function extractWalmartLinks(text) {
+  const links = new Set();
+
+  const fullRegex = /https:\/\/www\.walmart\.com\/ip\/[^"'\\\s]+\/[0-9]+/g;
+  const relativeRegex = /\/ip\/[^"'\\\s]+\/[0-9]+/g;
+
+  for (const m of String(text).match(fullRegex) || []) links.add(m.split("?")[0]);
+  for (const m of String(text).match(relativeRegex) || []) links.add(`https://www.walmart.com${m.split("?")[0]}`);
+
+  return [...links].filter((url) => {
+    const lower = url.toLowerCase();
+    return lower.includes("pokemon");
+  });
+}
+
+async function discoverWalmartProducts() {
+  console.log("Starting Walmart discovery...");
+
+  const urls = [
+    "https://www.walmart.com/search?q=pokemon%20cards",
+    "https://www.walmart.com/search?q=pokemon%20tcg",
+    "https://www.walmart.com/search?q=pokemon%20elite%20trainer%20box",
+    "https://www.walmart.com/search?q=pokemon%20booster%20bundle"
+  ];
+
+  for (const url of urls) {
+    try {
+      console.log(`Checking Walmart: ${url}`);
+
+      const res = await fetchPage(url);
+      const html = String(res.data || "");
+      const links = extractWalmartLinks(html);
+
+      console.log(`Found ${links.length} Walmart links`);
+
+      for (const productUrl of links) {
+        const productName = cleanNameFromUrl(productUrl);
+
+        await insertDiscovery({
+          retailer: "Walmart",
+          productName,
+          productUrl,
+          price: null,
+          seller: "Walmart"
+        });
+
+        await new Promise((r) => setTimeout(r, 750));
+      }
+    } catch (err) {
+      console.error(`Walmart discovery failed: ${err.message}`);
+    }
+  }
+
+  console.log("Walmart discovery completed");
+}
+
 async function discoverBestBuyProducts() {
   console.log("Starting Best Buy discovery...");
 
@@ -566,6 +623,8 @@ async function runDiscoveryForRetailer(retailer) {
   await discoverPokemonCenterProducts();
 } else if (retailer.name === "Best Buy") {
   await discoverBestBuyProducts();
+} else if (retailer.name === "Walmart") {
+  await discoverWalmartProducts();
 } else {
   console.log(`No discovery function yet for ${retailer.name}`);
   status = "skipped";
