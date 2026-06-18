@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import axios from "axios";
+import { chromium } from "playwright";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -379,93 +380,141 @@ async function discoverPokemonCenterProducts() {
   console.log("Pokemon Center discovery completed");
 }
 
-function extractWalmartLinks(text) {
-  const links = new Set();
-  const html = String(text || "");
-
-  const patterns = [
-    /https:\/\/www\.walmart\.com\/ip\/[^"'<>\\\s]+/g,
-    /\/ip\/[^"'<>\\\s]+/g,
-    /"canonicalUrl"\s*:\s*"([^"]*\/ip\/[^"]+)"/g,
-    /"productUrl"\s*:\s*"([^"]*\/ip\/[^"]+)"/g,
-    /"usItemId"\s*:\s*"([0-9]+)"/g
-  ];
-
-  for (const pattern of patterns) {
-    const matches = [...html.matchAll(pattern)];
-
-    for (const match of matches) {
-      let raw = match[1] || match[0];
-
-      raw = raw
-        .replace(/\\u002F/g, "/")
-        .replace(/\\\//g, "/")
-        .replace(/\\/g, "")
-        .split("?")[0];
-
-      if (/^[0-9]+$/.test(raw)) {
-        links.add(`https://www.walmart.com/ip/${raw}`);
-      } else if (raw.startsWith("https://www.walmart.com/ip/")) {
-        links.add(raw);
-      } else if (raw.startsWith("/ip/")) {
-        links.add(`https://www.walmart.com${raw}`);
-      }
-    }
-  }
-
-  return [...links].filter((url) => {
-    const lower = url.toLowerCase();
-    return lower.includes("pokemon") || /\/ip\/[0-9]+$/.test(lower);
-  });
-}
-
 async function discoverWalmartProducts() {
-  console.log("Starting Walmart discovery...");
+  console.log("Starting Walmart discovery with Playwright...");
 
-  const urls = [
+  const searchUrls = [
     "https://www.walmart.com/search?q=pokemon%20cards",
     "https://www.walmart.com/search?q=pokemon%20tcg",
     "https://www.walmart.com/search?q=pokemon%20elite%20trainer%20box",
-    "https://www.walmart.com/search?q=pokemon%20booster%20bundle"
+    "https://www.walmart.com/search?q=pokemon%20booster%20bundle",
+    "https://www.walmart.com/search?q=pokemon%20mega%20evolution"
   ];
 
-  for (const url of urls) {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+  });
+
+  const productUrls = new Set();
+
+  for (const searchUrl of searchUrls) {
     try {
-      console.log(`Checking Walmart: ${url}`);
+      console.log(`Checking Walmart search: ${searchUrl}`);
 
-      const res = await fetchPage(url);
-      const html = String(res.data || "");
-      console.log("WALMART HTML LENGTH:", html.length);
+      await page.goto(searchUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000
+      });
 
-const sellerMatches = html.match(/"sellerName":"[^"]+"|"sellerDisplayName":"[^"]+"|"seller":"[^"]+"|"sellerId":"[^"]+"/g);
-console.log("WALMART SELLER MATCHES:");
-console.log(sellerMatches ? sellerMatches.slice(0, 30) : "NONE");
+      await page.waitForTimeout(5000);
 
-const itemMatches = html.match(/"usItemId":"[0-9]+"/g);
-console.log("WALMART ITEM MATCHES:");
-console.log(itemMatches ? itemMatches.slice(0, 20) : "NONE");
-      const links = extractWalmartLinks(html);
+      const links = await page.$$eval("a[href*='/ip/']", anchors =>
+        anchors
+          .map(a => a.href)
+          .filter(href => href.includes("walmart.com/ip/"))
+          .map(href => href.split("?")[0])
+      );
 
-      console.log(`Found ${links.length} Walmart links`);
+      console.log(`Found ${links.length} Walmart product links`);
 
-      for (const productUrl of links) {
-        const productName = cleanNameFromUrl(productUrl);
-
-        await insertDiscovery({
-          retailer: "Walmart",
-          productName,
-          productUrl,
-          price: null,
-          seller: "Walmart"
-        });
-
-        await new Promise((r) => setTimeout(r, 750));
+      for (const link of links) {
+        productUrls.add(link);
       }
     } catch (err) {
-      console.error(`Walmart discovery failed: ${err.message}`);
+      console.error(`Walmart search failed: ${err.message}`);
     }
   }
 
+  console.log(`Total unique Walmart product URLs: ${productUrls.size}`);
+
+  for (const productUrl of productUrls) {
+    try {
+      await page.goto(productUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000
+      });
+
+      await page.waitForTimeout(3000);
+
+      const data = await page.evaluate(() => {
+        const bodyText = document.body.innerText || "";
+        const title =
+          document.querySelector("h1")?.innerText ||
+          document.title ||
+          "";
+
+        const priceText =
+          document.querySelector("[itemprop='price']")?.getAttribute("content") ||
+          bodyText.match(/\$[0-9]+(?:\.[0-9]{2})?/)?.[0] ||
+          null;
+
+        const sellerText = bodyText.match(/Sold and shipped by[\s\S]{0,80}/i)?.[0] || bodyText;
+
+        return {
+          title,
+          bodyText,
+          priceText,
+          sellerText
+        };
+      });
+
+      const productName = data.title || cleanNameFromUrl(productUrl);
+      const lowerName = productName.toLowerCase();
+      const lowerPage = `${data.bodyText} ${data.sellerText}`.toLowerCase();
+
+      const soldByWalmart =
+        lowerPage.includes("sold and shipped by walmart") ||
+        lowerPage.includes("sold by walmart") ||
+        lowerPage.includes("walmart.com");
+
+      const cartable =
+        lowerPage.includes("add to cart") ||
+        lowerPage.includes("add for shipping");
+
+      const price = data.priceText
+        ? Number(String(data.priceText).replace("$", ""))
+        : null;
+
+      if (!soldByWalmart) {
+        console.log(`Skipped Walmart marketplace product: ${productName}`);
+        continue;
+      }
+
+      if (!cartable) {
+        console.log(`Skipped Walmart not cartable: ${productName}`);
+        continue;
+      }
+
+      if (!shouldKeepProduct(productName, productUrl)) {
+        console.log(`Skipped Walmart noisy product: ${productName}`);
+        continue;
+      }
+
+      const msrp = estimateMsrp(productName);
+      const tooExpensive = price && msrp && price / msrp > 1.15;
+
+      if (tooExpensive) {
+        console.log(`Skipped Walmart overpriced product: ${productName} | Price: ${price} | MSRP: ${msrp}`);
+        continue;
+      }
+
+      await insertDiscovery({
+        retailer: "Walmart",
+        productName,
+        productUrl,
+        price,
+        seller: "Walmart"
+      });
+
+      await new Promise(r => setTimeout(r, 1000));
+    } catch (err) {
+      console.error(`Walmart product check failed: ${productUrl} | ${err.message}`);
+    }
+  }
+
+  await browser.close();
   console.log("Walmart discovery completed");
 }
 
