@@ -18,13 +18,12 @@ const EXCLUDE_TERMS = [
   "shirt", "hoodie", "figure", "birthday", "plush", "toy", "costume",
   "backpack", "lunch", "pajama", "pillow", "blanket", "hat", "sock",
   "poster", "book", "mug", "pants", "chinese", "world championships",
-  "world championship", "trick or trade", "lot 8", "lot", "25th anniversary", "sword shield",
-  "sun moon", "xy evolutions"
+  "world championship", "trick or trade", "lot 8", "lot",
+  "25th anniversary", "sword shield", "sun moon", "xy evolutions"
 ];
 
 async function sendTelegram(message) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-
   const chatIds = [
     process.env.TELEGRAM_CHAT_ID,
     process.env.TELEGRAM_CHAT_ID_2
@@ -33,14 +32,11 @@ async function sendTelegram(message) {
   if (!token || chatIds.length === 0) return;
 
   for (const chatId of chatIds) {
-    await axios.post(
-      `https://api.telegram.org/bot${token}/sendMessage`,
-      {
-        chat_id: chatId,
-        text: message,
-        disable_web_page_preview: false
-      }
-    );
+    await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
+      chat_id: chatId,
+      text: message,
+      disable_web_page_preview: false
+    });
   }
 
   console.log(`Telegram message sent to ${chatIds.length} chat(s)`);
@@ -55,11 +51,9 @@ async function fetchPage(url) {
       "User-Agent": isWalmart
         ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
         : "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile Safari/604.1",
-
       Accept: isWalmart
         ? "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
         : "application/json,text/html,*/*",
-
       "Accept-Language": "en-US,en;q=0.9",
       "Cache-Control": "no-cache",
       Pragma: "no-cache",
@@ -67,6 +61,7 @@ async function fetchPage(url) {
     }
   });
 }
+
 function hasAny(text, terms) {
   const lower = String(text || "").toLowerCase();
   return terms.some((term) => lower.includes(term));
@@ -146,14 +141,14 @@ function cleanNameFromUrl(url) {
 
     const walmartMatch = decoded.match(/\/ip\/(.+?)\/[0-9]+/);
 
-if (walmartMatch) {
-  return walmartMatch[1]
-    .replace(/-/g, " ")
-    .replace(/&#34;/g, '"')
-    .replace(/&amp;/g, "&")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-    
+    if (walmartMatch) {
+      return walmartMatch[1]
+        .replace(/-/g, " ")
+        .replace(/&#34;/g, '"')
+        .replace(/&amp;/g, "&")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
     return "Pokemon TCG Product";
   } catch {
     return "Pokemon TCG Product";
@@ -179,18 +174,16 @@ function matchUpcomingProduct(productName, upcomingProducts) {
 
   for (const upcoming of upcomingProducts || []) {
     const keywords = upcoming.keywords || [];
-
-    const matched = keywords.some(keyword =>
+    const matched = keywords.some((keyword) =>
       name.includes(String(keyword).toLowerCase())
     );
 
-    if (matched) {
-      return upcoming;
-    }
+    if (matched) return upcoming;
   }
 
   return null;
 }
+
 async function insertDiscovery({ retailer, productName, productUrl, price = null, seller = null, upcomingProducts = [] }) {
   if (!shouldKeepProduct(productName, productUrl)) {
     console.log(`Skipped noisy product: ${productName}`);
@@ -201,14 +194,17 @@ async function insertDiscovery({ retailer, productName, productUrl, price = null
   const msrp = estimateMsrp(productName);
   const priceVsMsrp = price && msrp ? Number((price / msrp).toFixed(2)) : null;
   const matchedUpcoming = matchUpcomingProduct(productName, upcomingProducts);
+
+  if (!matchedUpcoming && retailer === "Target") {
+    console.log(`Skipped Target product not in upcoming list: ${productName}`);
+    return;
+  }
+
   const finalPriority = matchedUpcoming?.priority || priority;
   const finalMsrp = matchedUpcoming?.expected_msrp || msrp;
-  const finalPriceVsMsrp = price && finalMsrp ? Number((price / finalMsrp).toFixed(2)) : priceVsMsrp;
-
-if (!matchedUpcoming && retailer === "Target") {
-  console.log(`Skipped Target product not in upcoming list: ${productName}`);
-  return;
-}
+  const finalPriceVsMsrp = price && finalMsrp
+    ? Number((price / finalMsrp).toFixed(2))
+    : priceVsMsrp;
 
   const { data: existing } = await supabase
     .from("discovered_products")
@@ -217,42 +213,42 @@ if (!matchedUpcoming && retailer === "Target") {
     .limit(1);
 
   if (existing?.length) {
-  await supabase
-    .from("discovered_products")
-    .update({
-      last_seen_at: new Date().toISOString(),
-      times_seen: (existing[0].times_seen || 1) + 1
-    })
-    .eq("id", existing[0].id);
+    await supabase
+      .from("discovered_products")
+      .update({
+        last_seen_at: new Date().toISOString(),
+        times_seen: (existing[0].times_seen || 1) + 1
+      })
+      .eq("id", existing[0].id);
 
-  return;
-}
+    return;
+  }
 
   const { error } = await supabase.from("discovered_products").insert({
-  retailer,
-  product_name: productName,
-  product_url: productUrl,
-  status: "discovered",
-  added_to_watchlist: false,
-  ignored: false,
-  seller: seller || retailer,
-  price,
-  is_marketplace: false,
-  msrp_estimate: finalMsrp,
-  price_vs_msrp: finalPriceVsMsrp,
-  priority: finalPriority,
-  matched_upcoming_product_id: matchedUpcoming?.id || null,
-  first_seen_at: new Date().toISOString(),
-  last_seen_at: new Date().toISOString(),
-  times_seen: 1
-});
+    retailer,
+    product_name: productName,
+    product_url: productUrl,
+    status: "discovered",
+    added_to_watchlist: false,
+    ignored: false,
+    seller: seller || retailer,
+    price,
+    is_marketplace: false,
+    msrp_estimate: finalMsrp,
+    price_vs_msrp: finalPriceVsMsrp,
+    priority: finalPriority,
+    matched_upcoming_product_id: matchedUpcoming?.id || null,
+    first_seen_at: new Date().toISOString(),
+    last_seen_at: new Date().toISOString(),
+    times_seen: 1
+  });
 
   if (error) {
     console.error("Discovery insert error:", error.message);
     return;
   }
 
-  console.log(`New ${retailer} discovery: ${productName} | Priority: ${priority}`);
+  console.log(`New ${retailer} discovery: ${productName} | Priority: ${finalPriority}`);
 
   if (finalPriority >= 90) {
     await sendTelegram(
@@ -260,7 +256,7 @@ if (!matchedUpcoming && retailer === "Target") {
 
 ${productName}
 
-Priority: ${priority}
+Priority: ${finalPriority}
 Seller: ${seller || retailer}
 Price: ${price ? `$${price}` : "Unknown"}
 
@@ -270,42 +266,11 @@ ${productUrl}`
   }
 }
 
-function extractTargetLinks(text) {
-  const links = new Set();
-  const fullRegex = /https:\/\/www\.target\.com\/p\/[^"'\\\s]+?\/-\/A-[0-9]+/g;
-  const relativeRegex = /\/p\/[^"'\\\s]+?\/-\/A-[0-9]+/g;
-
-  for (const m of String(text).match(fullRegex) || []) links.add(m.split("?")[0]);
-  for (const m of String(text).match(relativeRegex) || []) links.add(`https://www.target.com${m.split("?")[0]}`);
-
-  return [...links];
-}
-
-function findPriceNearUrl(text, url) {
-  const slug = url.split("/p/")[1]?.split("/-/A-")[0];
-  if (!slug) return null;
-  const index = text.indexOf(slug);
-  if (index === -1) return null;
-
-  const nearby = text.slice(Math.max(0, index - 3000), index + 5000);
-  const patterns = [
-    /"current_retail"\s*:\s*([0-9]+(?:\.[0-9]+)?)/,
-    /"formatted_current_price"\s*:\s*"\$([0-9]+(?:\.[0-9]{2})?)"/,
-    /"price"\s*:\s*([0-9]+(?:\.[0-9]+)?)/,
-    /\$([0-9]+(?:\.[0-9]{2})?)/
-  ];
-
-  for (const p of patterns) {
-    const match = nearby.match(p);
-    if (match) return Number(match[1]);
-  }
-  return null;
-}
-
 async function discoverTargetProducts() {
   console.log("Starting Target discovery...");
+
   const upcomingProducts = await getUpcomingProducts();
-console.log(`Loaded ${upcomingProducts.length} upcoming products`);
+  console.log(`Loaded ${upcomingProducts.length} upcoming products`);
 
   const urls = [
     "https://redsky.target.com/redsky_aggregations/v1/web/plp_search_v2?key=9f36aeafbe60771e321a7cc95a78140772ab3e96&channel=WEB&count=24&default_purchasability_filter=true&include_sponsored=true&keyword=pokemon%20cards&offset=0&page=%2Fs%2Fpokemon%20cards&platform=desktop&pricing_store_id=1771&scheduled_delivery_store_id=1771&store_ids=1771%2C1768%2C1113%2C3374%2C1792&useragent=Mozilla%2F5.0&visitor_id=01787772E6FD0201B7D280AD0B9C2D6B",
@@ -317,110 +282,61 @@ console.log(`Loaded ${upcomingProducts.length} upcoming products`);
       console.log(`Fetching Target URL: ${url}`);
       const res = await fetchPage(url);
       console.log(`Target fetch success: HTTP ${res.status}`);
+
       const products =
-  res.data?.data?.search?.products ||
-  res.data?.data?.search_response?.products ||
-  res.data?.data?.product_summaries ||
-  [];
+        res.data?.data?.search?.products ||
+        res.data?.data?.search_response?.products ||
+        res.data?.data?.product_summaries ||
+        [];
 
-console.log(`Found ${products.length} Target product objects`);
+      console.log(`Found ${products.length} Target product objects`);
 
-for (const product of products) {
-  const isMarketplace = product?.item?.fulfillment?.is_marketplace === true;
-  const vendorName = product?.item?.product_vendors?.[0]?.vendor_name || "Target";
+      for (const product of products) {
+        const isMarketplace = product?.item?.fulfillment?.is_marketplace === true;
+        const vendorName = product?.item?.product_vendors?.[0]?.vendor_name || "Target";
 
-  if (isMarketplace) {
-    console.log(`Skipped Target marketplace seller: ${vendorName}`);
-    continue;
-  }
+        if (isMarketplace) {
+          console.log(`Skipped Target marketplace seller: ${vendorName}`);
+          continue;
+        }
 
-  const productUrl = product?.item?.enrichment?.buy_url;
-  const productName = product?.item?.product_description?.title || cleanNameFromUrl(productUrl);
-  const price = product?.price?.current_retail ?? null;
+        const productUrl = product?.item?.enrichment?.buy_url;
+        const productName =
+          product?.item?.product_description?.title ||
+          cleanNameFromUrl(productUrl);
 
-  if (!productUrl || !productName) {
-    console.log("Skipped Target product with missing URL/name");
-    continue;
-  }
+        const price = product?.price?.current_retail ?? null;
 
-  await insertDiscovery({
-  retailer: "Target",
-  productName,
-  productUrl,
-  price,
-  seller: vendorName,
-  upcomingProducts
-});
+        if (!productUrl || !productName) {
+          console.log("Skipped Target product with missing URL/name");
+          continue;
+        }
 
-  await new Promise((r) => setTimeout(r, 500));
-}
+        await insertDiscovery({
+          retailer: "Target",
+          productName,
+          productUrl,
+          price,
+          seller: vendorName,
+          upcomingProducts
+        });
+
+        await new Promise((r) => setTimeout(r, 500));
+      }
     } catch (err) {
-  console.error(`Target discovery failed: ${err.message}`);
-  console.error(`Target failed status: ${err.response?.status || "no-status"}`);
-  console.error(`Target failed URL: ${url}`);
-}
+      console.error(`Target discovery failed: ${err.message}`);
+      console.error(`Target failed status: ${err.response?.status || "no-status"}`);
+      console.error(`Target failed URL: ${url}`);
+    }
   }
-}
-
-function extractPokemonCenterLinks(text) {
-  const links = new Set();
-
-  const fullRegex = /https:\/\/www\.pokemoncenter\.com\/product\/[^"'\\\s]+/g;
-  const relativeRegex = /\/product\/[^"'\\\s]+/g;
-
-  for (const m of String(text).match(fullRegex) || []) {
-    links.add(m.split("?")[0]);
-  }
-
-  for (const m of String(text).match(relativeRegex) || []) {
-    links.add(`https://www.pokemoncenter.com${m.split("?")[0]}`);
-  }
-
-  return [...links].filter((url) => {
-    const lower = url.toLowerCase();
-    return lower.includes("pokemon-tcg") || lower.includes("trading-card") || lower.includes("booster") || lower.includes("elite-trainer");
-  });
 }
 
 async function discoverPokemonCenterProducts() {
-  console.log("Starting Pokemon Center discovery...");
+  console.log("Pokemon Center discovery disabled/not used.");
+}
 
-  const urls = [
-    "https://www.pokemoncenter.com/category/trading-card-game",
-    "https://www.pokemoncenter.com/search/pokemon-tcg",
-    "https://www.pokemoncenter.com/search/booster-bundle",
-    "https://www.pokemoncenter.com/search/elite-trainer-box"
-  ];
-
-  for (const url of urls) {
-    try {
-      console.log(`Checking Pokemon Center: ${url}`);
-
-      const res = await fetchPage(url);
-      const text = typeof res.data === "string" ? res.data : JSON.stringify(res.data);
-      const links = extractPokemonCenterLinks(text);
-
-      console.log(`Found ${links.length} Pokemon Center links`);
-
-      for (const productUrl of links) {
-        const productName = cleanNameFromUrl(productUrl);
-
-        await insertDiscovery({
-          retailer: "Pokemon Center",
-          productName,
-          productUrl,
-          price: null,
-          seller: "Pokemon Center"
-        });
-
-        await new Promise((r) => setTimeout(r, 750));
-      }
-    } catch (err) {
-      console.error(`Pokemon Center discovery failed: ${err.message}`);
-    }
-  }
-
-  console.log("Pokemon Center discovery completed");
+async function discoverBestBuyProducts() {
+  console.log("Best Buy discovery disabled/not used.");
 }
 
 async function discoverWalmartProducts() {
@@ -452,19 +368,20 @@ async function discoverWalmartProducts() {
       });
 
       await page.waitForTimeout(5000);
+
       const pageTitle = await page.title();
-const pageUrl = page.url();
-const bodySample = await page.locator("body").innerText().catch(() => "");
+      const pageUrl = page.url();
+      const bodySample = await page.locator("body").innerText().catch(() => "");
 
-console.log("WALMART PAGE TITLE:", pageTitle);
-console.log("WALMART PAGE URL:", pageUrl);
-console.log("WALMART BODY SAMPLE:", bodySample.slice(0, 500));
+      console.log("WALMART PAGE TITLE:", pageTitle);
+      console.log("WALMART PAGE URL:", pageUrl);
+      console.log("WALMART BODY SAMPLE:", bodySample.slice(0, 500));
 
-      const links = await page.$$eval("a[href*='/ip/']", anchors =>
+      const links = await page.$$eval("a[href*='/ip/']", (anchors) =>
         anchors
-          .map(a => a.href)
-          .filter(href => href.includes("walmart.com/ip/"))
-          .map(href => href.split("?")[0])
+          .map((a) => a.href)
+          .filter((href) => href.includes("walmart.com/ip/"))
+          .map((href) => href.split("?")[0])
       );
 
       console.log(`Found ${links.length} Walmart product links`);
@@ -500,24 +417,15 @@ console.log("WALMART BODY SAMPLE:", bodySample.slice(0, 500));
           bodyText.match(/\$[0-9]+(?:\.[0-9]{2})?/)?.[0] ||
           null;
 
-        const sellerText = bodyText.match(/Sold and shipped by[\s\S]{0,80}/i)?.[0] || bodyText;
-
-        return {
-          title,
-          bodyText,
-          priceText,
-          sellerText
-        };
+        return { title, bodyText, priceText };
       });
 
       const productName = data.title || cleanNameFromUrl(productUrl);
-      const lowerName = productName.toLowerCase();
-      const lowerPage = `${data.bodyText} ${data.sellerText}`.toLowerCase();
+      const lowerPage = data.bodyText.toLowerCase();
 
       const soldByWalmart =
         lowerPage.includes("sold and shipped by walmart") ||
-        lowerPage.includes("sold by walmart") ||
-        lowerPage.includes("walmart.com");
+        lowerPage.includes("sold by walmart");
 
       const cartable =
         lowerPage.includes("add to cart") ||
@@ -558,7 +466,7 @@ console.log("WALMART BODY SAMPLE:", bodySample.slice(0, 500));
         seller: "Walmart"
       });
 
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, 1000));
     } catch (err) {
       console.error(`Walmart product check failed: ${productUrl} | ${err.message}`);
     }
@@ -566,91 +474,6 @@ console.log("WALMART BODY SAMPLE:", bodySample.slice(0, 500));
 
   await browser.close();
   console.log("Walmart discovery completed");
-}
-
-async function discoverBestBuyProducts() {
-  console.log("Starting Best Buy discovery...");
-
-  const urls = [
-    "https://www.bestbuy.com/site/searchpage.jsp?st=pokemon%20cards",
-    "https://www.bestbuy.com/site/searchpage.jsp?st=pokemon%20tcg",
-    "https://www.bestbuy.com/site/searchpage.jsp?st=pokemon%20booster"
-  ];
-
-  for (const url of urls) {
-    try {
-      console.log(`Checking Best Buy: ${url}`);
-
-      const res = await fetchPage(url);
-      const html = String(res.data || "");
-
-      console.log(`Best Buy response length: ${html.length}`);
-      const apiMatches = html.match(/api[^"'<> ]+/gi);
-
-console.log("Best Buy API matches:");
-console.log(apiMatches ? apiMatches.slice(0, 50) : "NONE");
-
-      const links = new Set();
-
-      const rawPatterns = [
-        /https:\/\/www\.bestbuy\.com\/site\/[^"'<>\\\s]+?\/[0-9]+\.p/g,
-        /\/site\/[^"'<>\\\s]+?\/[0-9]+\.p/g,
-        /\\u002Fsite\\u002F[^"'<>\\\s]+?\\u002F[0-9]+\.p/g,
-        /\\\/site\\\/[^"'<>\\\s]+?\\\/[0-9]+\.p/g,
-        /"href"\s*:\s*"([^"]*site[^"]*?[0-9]+\.p[^"]*)"/g,
-        /"url"\s*:\s*"([^"]*site[^"]*?[0-9]+\.p[^"]*)"/g
-      ];
-
-      for (const pattern of rawPatterns) {
-        const matches = [...html.matchAll(pattern)];
-
-        for (const match of matches) {
-          let raw = match[1] || match[0];
-
-          raw = raw
-            .replace(/\\u002F/g, "/")
-            .replace(/\\\//g, "/")
-            .replace(/\\/g, "")
-            .split("?")[0];
-
-          if (raw.startsWith("https://www.bestbuy.com/site/")) {
-            links.add(raw);
-          } else if (raw.startsWith("/site/")) {
-            links.add(`https://www.bestbuy.com${raw}`);
-          }
-        }
-      }
-
-      const filteredLinks = [...links].filter((productUrl) => {
-        const lower = productUrl.toLowerCase();
-        return (
-          lower.includes("pokemon") &&
-          lower.includes("bestbuy.com/site") &&
-          lower.endsWith(".p")
-        );
-      });
-
-      console.log(`Found ${filteredLinks.length} Best Buy Pokemon links`);
-
-      for (const productUrl of filteredLinks) {
-        const productName = cleanNameFromUrl(productUrl);
-
-        await insertDiscovery({
-          retailer: "Best Buy",
-          productName,
-          productUrl,
-          price: null,
-          seller: "Best Buy"
-        });
-
-        await new Promise((r) => setTimeout(r, 750));
-      }
-    } catch (err) {
-      console.error(`Best Buy discovery failed: ${err.message}`);
-    }
-  }
-
-  console.log("Best Buy discovery completed");
 }
 
 async function getPreviousStatus(productId) {
@@ -714,18 +537,17 @@ async function checkTargetProduct(product) {
 
     const isAvailable =
       jsonText.includes("in_stock") ||
-      jsonText.includes("ship_to_home") ||
       jsonText.includes("add to cart") ||
       jsonText.includes("available_to_promise");
 
     const isCartable = isAvailable && !isOut;
 
     console.log(
-  `TARGET WATCH CHECK: ${product.name} | TCIN ${tcin} | isOut=${isOut} | isAvailable=${isAvailable} | isCartable=${isCartable} | price=${price}`
-);
+      `TARGET WATCH CHECK: ${product.name} | TCIN ${tcin} | isOut=${isOut} | isAvailable=${isAvailable} | isCartable=${isCartable} | price=${price}`
+    );
 
-return {
-  status: isCartable ? "cartable" : "out_of_stock",
+    return {
+      status: isCartable ? "cartable" : "out_of_stock",
       isCartable,
       price: price ? Number(price) : null,
       rawMessage: `Target RedSky PDP check. TCIN ${tcin}. HTTP ${res.status}. Cartable: ${isCartable}.`
@@ -741,8 +563,7 @@ return {
 }
 
 async function checkProduct(product) {
-
-  if (String(product.product_url || '').includes('target.com')) {
+  if (String(product.product_url || "").includes("target.com")) {
     return await checkTargetProduct(product);
   }
 
@@ -761,7 +582,11 @@ async function checkProduct(product) {
     ) {
       status = "cartable";
       isCartable = true;
-    } else if (html.includes("coming soon") || html.includes("preorder") || html.includes("pre-order")) {
+    } else if (
+      html.includes("coming soon") ||
+      html.includes("preorder") ||
+      html.includes("pre-order")
+    ) {
       status = "coming_soon";
     }
 
@@ -837,7 +662,6 @@ ${product.product_url}`
 
 async function runDiscoveryForRetailer(retailer) {
   const startedAt = new Date().toISOString();
-
   let productsFound = 0;
   let productsAdded = 0;
   let errors = null;
@@ -851,17 +675,17 @@ async function runDiscoveryForRetailer(retailer) {
     const beforeCount = before.count || 0;
 
     if (retailer.name === "Target") {
-  await discoverTargetProducts();
-} else if (retailer.name === "Pokemon Center") {
-  await discoverPokemonCenterProducts();
-} else if (retailer.name === "Best Buy") {
-  await discoverBestBuyProducts();
-} else if (retailer.name === "Walmart") {
-  await discoverWalmartProducts();
-} else {
-  console.log(`No discovery function yet for ${retailer.name}`);
-  status = "skipped";
-}
+      await discoverTargetProducts();
+    } else if (retailer.name === "Pokemon Center") {
+      await discoverPokemonCenterProducts();
+    } else if (retailer.name === "Best Buy") {
+      await discoverBestBuyProducts();
+    } else if (retailer.name === "Walmart") {
+      await discoverWalmartProducts();
+    } else {
+      console.log(`No discovery function yet for ${retailer.name}`);
+      status = "skipped";
+    }
 
     const after = await supabase
       .from("discovered_products")
@@ -892,7 +716,7 @@ async function runDiscovery() {
 
   const { data: retailers, error } = await supabase
     .from("retailers")
-    .select("*")
+    .select("*");
 
   if (error) {
     console.error("Failed to load retailers:", error.message);
@@ -900,13 +724,13 @@ async function runDiscovery() {
   }
 
   for (const retailer of retailers || []) {
-  const retailerEnabled =
-    retailer.enabled === true ||
-    retailer.active === true;
+    const retailerEnabled =
+      retailer.enabled === true ||
+      retailer.active === true;
 
-  const discoveryOn =
-    retailerEnabled === true &&
-    retailer.discovery_enabled === true;
+    const discoveryOn =
+      retailerEnabled === true &&
+      retailer.discovery_enabled === true;
 
     if (!discoveryOn) {
       console.log(`Discovery disabled for ${retailer.name}`);
