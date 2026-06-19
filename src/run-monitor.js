@@ -664,7 +664,84 @@ async function getPreviousStatus(productId) {
   return data?.[0] || null;
 }
 
+function getTargetTcin(url) {
+  const match = String(url || "").match(/A-([0-9]+)/);
+  return match ? match[1] : null;
+}
+
+async function checkTargetProduct(product) {
+  const tcin = getTargetTcin(product.product_url);
+
+  if (!tcin) {
+    return {
+      status: "error",
+      isCartable: false,
+      price: product.target_price || null,
+      rawMessage: "Target check failed: no TCIN found in URL."
+    };
+  }
+
+  try {
+    const url =
+      `https://redsky.target.com/redsky_aggregations/v1/web/pdp_client_v1` +
+      `?key=9f36aeafbe60771e321a7cc95a78140772ab3e96` +
+      `&tcin=${tcin}` +
+      `&is_bot=false` +
+      `&store_id=1771` +
+      `&pricing_store_id=1771` +
+      `&scheduled_delivery_store_id=1771` +
+      `&has_pricing_store_id=true` +
+      `&has_financing_options=true` +
+      `&include_obsolete=true` +
+      `&visitor_id=01787772E6FD0201B7D280AD0B9C2D6B` +
+      `&channel=WEB`;
+
+    const res = await fetchPage(url);
+    const jsonText = JSON.stringify(res.data || {}).toLowerCase();
+
+    const productData = res.data?.data?.product || {};
+    const price =
+      productData?.price?.current_retail ??
+      productData?.price?.formatted_current_price?.replace("$", "") ??
+      product.target_price ??
+      null;
+
+    const isOut =
+      jsonText.includes("out_of_stock") ||
+      jsonText.includes("out of stock") ||
+      jsonText.includes("not_available") ||
+      jsonText.includes("not available");
+
+    const isAvailable =
+      jsonText.includes("in_stock") ||
+      jsonText.includes("ship_to_home") ||
+      jsonText.includes("add to cart") ||
+      jsonText.includes("available_to_promise");
+
+    const isCartable = isAvailable && !isOut;
+
+    return {
+      status: isCartable ? "cartable" : "out_of_stock",
+      isCartable,
+      price: price ? Number(price) : null,
+      rawMessage: `Target RedSky PDP check. TCIN ${tcin}. HTTP ${res.status}. Cartable: ${isCartable}.`
+    };
+  } catch (err) {
+    return {
+      status: "error",
+      isCartable: false,
+      price: product.target_price || null,
+      rawMessage: `Target RedSky PDP check failed for TCIN ${tcin}: ${err.message}`
+    };
+  }
+}
+
 async function checkProduct(product) {
+
+  if (String(product.product_url || '').includes('target.com')) {
+    return await checkTargetProduct(product);
+  }
+
   try {
     const res = await fetchPage(product.product_url);
     const html = String(res.data || "").toLowerCase();
