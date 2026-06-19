@@ -720,8 +720,12 @@ async function checkTargetProduct(product) {
 
     const isCartable = isAvailable && !isOut;
 
-    return {
-      status: isCartable ? "cartable" : "out_of_stock",
+    console.log(
+  `TARGET WATCH CHECK: ${product.name} | TCIN ${tcin} | isOut=${isOut} | isAvailable=${isAvailable} | isCartable=${isCartable} | price=${price}`
+);
+
+return {
+  status: isCartable ? "cartable" : "out_of_stock",
       isCartable,
       price: price ? Number(price) : null,
       rawMessage: `Target RedSky PDP check. TCIN ${tcin}. HTTP ${res.status}. Cartable: ${isCartable}.`
